@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { clerkClient } from "@clerk/nextjs/server";
 
 import User from "../database/models/user.model";
 import { connectToDatabase } from "../database/mongoose";
@@ -29,6 +30,41 @@ export async function getUserById(userId: string) {
     if (!user) throw new Error("User not found");
 
     return JSON.parse(JSON.stringify(user));
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+// READ OR CREATE (fallback when webhook sync hasn't created a DB user yet)
+export async function getOrCreateUser(clerkId: string) {
+  try {
+    await connectToDatabase();
+
+    const existingUser = await User.findOne({ clerkId });
+
+    if (existingUser) {
+      return JSON.parse(JSON.stringify(existingUser));
+    }
+
+    const clerkUser = await (await clerkClient()).users.getUser(clerkId);
+    const primaryEmail = clerkUser.emailAddresses[0]?.emailAddress;
+
+    if (!primaryEmail) {
+      throw new Error("Clerk user email not found");
+    }
+
+    const fallbackUsername = `user_${clerkUser.id.slice(-8).toLowerCase()}`;
+
+    const newUser = await User.create({
+      clerkId: clerkUser.id,
+      email: primaryEmail,
+      username: clerkUser.username || fallbackUsername,
+      firstName: clerkUser.firstName || "",
+      lastName: clerkUser.lastName || "",
+      photo: clerkUser.imageUrl,
+    });
+
+    return JSON.parse(JSON.stringify(newUser));
   } catch (error) {
     handleError(error);
   }
