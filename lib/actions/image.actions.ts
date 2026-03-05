@@ -93,15 +93,20 @@ export async function getImageById(imageId: string) {
 }
 
 // GET IMAGES
-export async function getAllImages({ limit = 9, page = 1, searchQuery = '' }: {
+export async function getAllImages({ limit = 9, page = 1, searchQuery = '', userId }: {
   limit?: number;
   page: number;
   searchQuery?: string;
+  userId?: string;
 }) {
   try {
     await connectToDatabase();
 
-    let query = {};
+    let query: { author?: string; publicId?: { $in: string[] } } = {};
+
+    if (userId) {
+      query.author = userId;
+    }
 
     if(searchQuery) {
       const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
@@ -128,6 +133,7 @@ export async function getAllImages({ limit = 9, page = 1, searchQuery = '' }: {
       const resourceIds = resources.map((resource: any) => resource.public_id);
 
       query = {
+        ...query,
         publicId: {
           $in: resourceIds
         }
@@ -142,7 +148,7 @@ export async function getAllImages({ limit = 9, page = 1, searchQuery = '' }: {
       .limit(limit);
     
     const totalImages = await Image.find(query).countDocuments();
-    const savedImages = await Image.find().countDocuments();
+    const savedImages = await Image.find(query).countDocuments();
 
     return {
       data: JSON.parse(JSON.stringify(images)),
